@@ -1,0 +1,40 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-linux
+          - os: ubuntu-24.04-arm
+            target: aarch64-linux
+          - os: macos-13
+            target: x86_64-macos
+          - os: macos-14
+            target: aarch64-macos
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Build release binary
+        run: cargo build --release
+
+      - name: Stage release asset
+        run: cp target/release/yt yt-${{ matrix.target }}
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: yt-${{ matrix.target }}

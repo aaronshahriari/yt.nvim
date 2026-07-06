@@ -22,18 +22,19 @@ A small **Rust helper binary** (`yt`) hits YouTube's internal **InnerTube API** 
 key, no quota) and streams results as NDJSON, falling back to **yt-dlp** if the format
 drifts. Neovim spawns it async, populates the list, and renders thumbnails with
 [image.nvim](https://github.com/3rd/image.nvim). Playback shells out to **mpv** (which
-resolves the stream via yt-dlp).
+resolves the stream via yt-dlp). The binary is fetched pre-built on install, falling back
+to a source build only if no release matches your platform.
 
 ## Requirements
 
-- Neovim ≥ 0.10 (uses `vim.system`)
+- Neovim ≥ 0.11 (uses `vim.system`; `vim.pack` needs 0.12+)
 - A terminal that speaks the **Kitty graphics protocol**: Kitty, Ghostty, or WezTerm
 - [`imagemagick`](https://imagemagick.org) — required by image.nvim
 - [`mpv`](https://mpv.io) — playback
 - [`yt-dlp`](https://github.com/yt-dlp/yt-dlp) — fallback search + mpv stream resolver
-- Rust toolchain (`cargo`) to build the helper binary
 - [3rd/image.nvim](https://github.com/3rd/image.nvim) (optional — without it you still get
   results, metadata, and playback, just no thumbnails)
+- Only if building from source (no prebuilt binary for your platform): Rust toolchain (`cargo`)
 
 > **Using tmux?** The Kitty graphics protocol only tunnels through tmux with passthrough
 > enabled. Add this to your `tmux.conf`, or thumbnails silently won't render:
@@ -42,26 +43,73 @@ resolves the stream via yt-dlp).
 > set -gq allow-passthrough on
 > ```
 
-## Install
+## Installation
 
-With [lazy.nvim](https://github.com/folke/lazy.nvim):
+The helper binary is fetched automatically on install and update.
+
+**vim.pack (Neovim 0.12+)** — register the `PackChanged` hook **before** `vim.pack.add()`:
+
+```lua
+vim.api.nvim_create_autocmd('PackChanged', {
+  callback = function(ev)
+    local name, kind = ev.data.spec.name, ev.data.kind
+    if name == 'yt.nvim' and (kind == 'install' or kind == 'update') then
+      require('yt.download').download_or_build()
+    end
+  end,
+})
+
+vim.pack.add({
+  { src = 'https://github.com/3rd/image.nvim' },
+  { src = 'https://github.com/aaronshahriari/yt.nvim' },
+})
+
+require('image').setup()
+require('yt').setup()
+```
+
+If the hook wasn't in place on first install, run `:YtBuild` manually.
+
+**lazy.nvim** — the bundled `build.lua` is picked up automatically, so no `build =` key is needed:
 
 ```lua
 {
-  "aaronshahriari/yt.nvim",
-  build = "cargo build --release",
-  dependencies = { "3rd/image.nvim" },
-  opts = {},
+  'aaronshahriari/yt.nvim',
+  dependencies = { '3rd/image.nvim' },
+  config = function() require('yt').setup() end,
 }
 ```
 
-The `build` step compiles the helper binary into `target/release/yt`; the plugin finds it
-automatically. On Nix, `nix develop` provides `cargo`, `imagemagick`, `mpv`, and `yt-dlp`.
+<details>
+<summary>Other plugin managers</summary>
+
+```vim
+" vim-plug
+Plug 'aaronshahriari/yt.nvim', { 'do': ':YtBuild' }
+```
+
+```lua
+-- packer.nvim
+use { 'aaronshahriari/yt.nvim', run = ':YtBuild' }
+```
+
+```sh
+# Manual
+git clone https://github.com/aaronshahriari/yt.nvim
+```
+
+For a manual install, add the directory to `runtimepath`, call `require('yt').setup()`, and
+run `:YtBuild`.
+
+</details>
+
+On Nix, `nix develop` provides `cargo`, `imagemagick`, `mpv`, and `yt-dlp` for local builds.
 
 ## Usage
 
 - `:Yt` — open the UI and prompt for a search
 - `:Yt <query>` — open and search immediately
+- `:YtBuild` — (re)download or build the helper binary
 
 In the results pane:
 

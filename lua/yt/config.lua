@@ -25,17 +25,18 @@ function M.setup(opts)
   M.options = vim.tbl_deep_extend("force", vim.deepcopy(defaults), opts or {})
 end
 
---- Resolve the helper binary: explicit config > repo release build > `yt` on PATH.
---- The repo build is preferred over PATH so local development works without installing.
+--- Resolve the helper binary: explicit config > downloaded `bin/yt` > local
+--- `target/release/yt` (dev builds) > `yt` on PATH.
 function M.bin_path()
   if M.options.bin_path then
     return M.options.bin_path
   end
   local src = debug.getinfo(1, "S").source:sub(2) -- .../lua/yt/config.lua
   local root = vim.fn.fnamemodify(src, ":h:h:h") -- repo root
-  local build = root .. "/target/release/yt"
-  if vim.fn.executable(build) == 1 then
-    return build
+  for _, p in ipairs({ root .. "/bin/yt", root .. "/target/release/yt" }) do
+    if vim.fn.executable(p) == 1 then
+      return p
+    end
   end
   if vim.fn.executable("yt") == 1 then
     return "yt"

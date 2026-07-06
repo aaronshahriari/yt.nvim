@@ -13,7 +13,7 @@ function M.run(query)
   local bin = config.bin_path()
   if not bin then
     vim.notify(
-      "yt.nvim: helper binary not found. Build it with `cargo build --release`.",
+      "yt.nvim: helper binary not found. Run :YtBuild to download or build it.",
       vim.log.levels.ERROR
     )
     return
