@@ -20,12 +20,14 @@ function M.run(query)
   end
 
   st.results = {}
+  st.page = 1
   st.preview_id = nil
   ui.set_query(query)
   ui.render_results() -- shows "Searching…"
 
   local preview = require("yt.preview")
-  local cmd = { bin, "search", query, "--limit", tostring(config.options.limit) }
+  local total = config.options.per_page * config.options.max_pages
+  local cmd = { bin, "search", query, "--limit", tostring(total) }
   if not config.options.use_ytdlp_fallback then
     table.insert(cmd, "--no-fallback")
   end
@@ -41,11 +43,15 @@ function M.run(query)
       if #st.results == 1 then
         preview.update(obj) -- preview the top hit immediately
       end
-      preview.prefetch(obj) -- warm the thumbnail cache
+      -- Only warm the first page here; later pages prefetch on navigation so we
+      -- don't spawn one thumbnail process per result all at once.
+      if #st.results <= config.options.per_page then
+        preview.prefetch(obj)
+      end
     end,
     on_exit = function()
       if #st.results == 0 then
-        ui.set_lines(st.left_buf, { "  No results." })
+        ui.set_lines(st.results_buf, { "  No results." })
       end
     end,
     stderr = function() end,

@@ -4,15 +4,40 @@ local M = {}
 
 local state = {
   open = false,
-  left_win = nil,
-  left_buf = nil,
-  right_win = nil,
-  right_buf = nil,
-  results = {}, -- results[i] corresponds to line i in the left buffer
+  results_win = nil,
+  results_buf = nil,
+  preview_win = nil,
+  preview_buf = nil,
+  results = {}, -- all fetched results (across pages)
+  page = 1, -- 1-based current page
+  query = "", -- current query (shown in the winbar)
   preview_id = nil, -- id currently shown in the preview pane
   image = nil, -- current image.nvim handle
   ns = vim.api.nvim_create_namespace("yt_nvim"),
 }
+
+-- Pagination geometry -------------------------------------------------------
+
+local function per_page()
+  return math.max(1, config.options.per_page or 10)
+end
+
+--- Number of pages currently available, capped by `max_pages`.
+function M.page_count()
+  if #state.results == 0 then
+    return 1
+  end
+  local pages = math.ceil(#state.results / per_page())
+  return math.min(pages, config.options.max_pages or pages)
+end
+
+local function page_start()
+  return (state.page - 1) * per_page() + 1
+end
+
+local function page_finish()
+  return math.min(page_start() + per_page() - 1, #state.results)
+end
 
 function M.state()
   return state
@@ -20,10 +45,10 @@ end
 
 function M.is_open()
   return state.open
-    and state.left_win
-    and vim.api.nvim_win_is_valid(state.left_win)
-    and state.right_win
-    and vim.api.nvim_win_is_valid(state.right_win)
+    and state.results_win
+    and vim.api.nvim_win_is_valid(state.results_win)
+    and state.preview_win
+    and vim.api.nvim_win_is_valid(state.preview_win)
 end
 
 local function make_buf(ft)
@@ -45,113 +70,177 @@ end
 
 function M.open()
   if M.is_open() then
-    vim.api.nvim_set_current_win(state.left_win)
+    vim.api.nvim_set_current_win(state.results_win)
     return
   end
 
   vim.cmd("tabnew")
-  local right = vim.api.nvim_get_current_win() -- becomes the preview pane
+  local rightmost = vim.api.nvim_get_current_win() -- stays on the right after vsplit
   vim.cmd("vsplit")
-  local left = vim.api.nvim_get_current_win() -- new window, on the left
+  local leftmost = vim.api.nvim_get_current_win() -- new window, on the left
 
-  state.left_buf = make_buf("ytresults")
-  state.right_buf = make_buf("ytpreview")
-  vim.api.nvim_win_set_buf(left, state.left_buf)
-  vim.api.nvim_win_set_buf(right, state.right_buf)
-  state.left_win, state.right_win = left, right
+  -- Place results/preview per config; the other pane fills the opposite side.
+  local results_win, preview_win = leftmost, rightmost
+  if config.options.results_side == "right" then
+    results_win, preview_win = rightmost, leftmost
+  end
 
-  pcall(vim.api.nvim_win_set_width, left, math.floor(vim.o.columns * (1 - config.options.preview_width)))
+  state.results_buf = make_buf("ytresults")
+  state.preview_buf = make_buf("ytpreview")
+  vim.api.nvim_win_set_buf(results_win, state.results_buf)
+  vim.api.nvim_win_set_buf(preview_win, state.preview_buf)
+  state.results_win, state.preview_win = results_win, preview_win
 
-  for _, w in ipairs({ left, right }) do
+  pcall(vim.api.nvim_win_set_width, preview_win, math.floor(vim.o.columns * config.options.preview_width))
+
+  for _, w in ipairs({ results_win, preview_win }) do
     vim.wo[w].number = false
     vim.wo[w].relativenumber = false
     vim.wo[w].signcolumn = "no"
     vim.wo[w].list = false
   end
-  vim.wo[left].wrap = false
-  vim.wo[left].cursorline = true
-  vim.wo[right].wrap = true
+  vim.wo[results_win].wrap = false
+  vim.wo[results_win].cursorline = true
+  vim.wo[preview_win].wrap = true
 
   state.results = {}
+  state.page = 1
+  state.query = ""
   state.preview_id = nil
   state.open = true
 
-  M.set_lines(state.left_buf, { "  Type a search…" })
+  M.set_lines(state.results_buf, { "  Type a search…" })
   M.setup_keymaps()
   M.setup_autocmds()
-  vim.api.nvim_set_current_win(left)
+  vim.api.nvim_set_current_win(results_win)
+end
+
+function M.update_winbar()
+  if not (state.results_win and vim.api.nvim_win_is_valid(state.results_win)) then
+    return
+  end
+  local wb = "  YouTube: " .. (state.query or "")
+  if #state.results > 0 then
+    wb = wb .. ("   ·   page %d/%d"):format(state.page, M.page_count())
+  end
+  vim.wo[state.results_win].winbar = wb
 end
 
 function M.set_query(query)
-  if state.left_win and vim.api.nvim_win_is_valid(state.left_win) then
-    vim.wo[state.left_win].winbar = "  YouTube: " .. (query or "")
-  end
+  state.query = query or ""
+  M.update_winbar()
 end
 
 local function format_result_line(r)
   return "  " .. (r.title or "")
 end
 
---- Re-render the whole results list. Cheap for ~10 items and keeps line i == results[i].
+--- Render only the current page's slice; line i maps to results[page_start()+i-1].
 function M.render_results()
   local lines = {}
-  for i, r in ipairs(state.results) do
-    lines[i] = format_result_line(r)
-  end
-  if #lines == 0 then
+  if #state.results == 0 then
     lines = { "  Searching…" }
+  else
+    for i = page_start(), page_finish() do
+      lines[#lines + 1] = format_result_line(state.results[i])
+    end
   end
-  M.set_lines(state.left_buf, lines)
+  M.set_lines(state.results_buf, lines)
+  M.update_winbar()
 end
 
 function M.current_result()
-  if not (state.left_win and vim.api.nvim_win_is_valid(state.left_win)) then
+  if not (state.results_win and vim.api.nvim_win_is_valid(state.results_win)) then
     return nil
   end
-  local line = vim.api.nvim_win_get_cursor(state.left_win)[1]
-  return state.results[line]
+  local row = vim.api.nvim_win_get_cursor(state.results_win)[1]
+  return state.results[page_start() + row - 1]
+end
+
+function M.preview_current()
+  local r = M.current_result()
+  if r and r.id ~= state.preview_id then
+    require("yt.preview").update(r)
+  end
+end
+
+--- Warm the thumbnail cache for the current page's results.
+function M.prefetch_page()
+  local preview = require("yt.preview")
+  for i = page_start(), page_finish() do
+    preview.prefetch(state.results[i])
+  end
+end
+
+--- Switch pages (clamped). Resets the cursor to the top and previews it.
+function M.goto_page(n)
+  if not M.is_open() then
+    return
+  end
+  n = math.max(1, math.min(n, M.page_count()))
+  if n == state.page then
+    return
+  end
+  state.page = n
+  M.render_results()
+  M.prefetch_page()
+  pcall(vim.api.nvim_win_set_cursor, state.results_win, { 1, 0 })
+  M.preview_current()
+end
+
+function M.next_page()
+  M.goto_page(state.page + 1)
+end
+
+function M.prev_page()
+  M.goto_page(state.page - 1)
 end
 
 function M.setup_keymaps()
   local km = config.options.keymaps
-  local opts = { buffer = state.left_buf, nowait = true, silent = true }
-  vim.keymap.set("n", km.play, function()
+  local opts = { buffer = state.results_buf, nowait = true, silent = true }
+  -- Each default is skippable: set the keymap entry to false/nil to drop it.
+  local function map(lhs, rhs)
+    if lhs then
+      vim.keymap.set("n", lhs, rhs, opts)
+    end
+  end
+  map(km.play, function()
     local r = M.current_result()
     if r then
       require("yt.player").play(r)
     end
-  end, opts)
-  vim.keymap.set("n", km.search, function()
+  end)
+  map(km.search, function()
     require("yt").open()
-  end, opts)
-  vim.keymap.set("n", km.quit, function()
+  end)
+  map(km.quit, function()
     M.close()
-  end, opts)
+  end)
+  map(km.page_next, M.next_page)
+  map(km.page_prev, M.prev_page)
 end
 
 function M.setup_autocmds()
   local grp = vim.api.nvim_create_augroup("yt_nvim", { clear = true })
 
   local on_move = require("yt.job").debounce(config.options.debounce_ms, function()
-    if not M.is_open() or vim.api.nvim_get_current_win() ~= state.left_win then
+    if not M.is_open() or vim.api.nvim_get_current_win() ~= state.results_win then
       return
     end
-    local r = M.current_result()
-    if r and r.id ~= state.preview_id then
-      require("yt.preview").update(r)
-    end
+    M.preview_current()
   end)
 
   vim.api.nvim_create_autocmd("CursorMoved", {
     group = grp,
-    buffer = state.left_buf,
+    buffer = state.results_buf,
     callback = on_move,
   })
 
   vim.api.nvim_create_autocmd("WinClosed", {
     group = grp,
     callback = function()
-      if not (state.left_win and vim.api.nvim_win_is_valid(state.left_win)) then
+      if not (state.results_win and vim.api.nvim_win_is_valid(state.results_win)) then
         M.teardown()
       end
     end,
@@ -168,12 +257,14 @@ function M.teardown()
   end
   state.open = false
   state.results = {}
+  state.page = 1
+  state.query = ""
   state.preview_id = nil
 end
 
 --- User-invoked close: wipe our windows (buffers are bufhidden=wipe) then teardown.
 function M.close()
-  local wins = { state.right_win, state.left_win }
+  local wins = { state.preview_win, state.results_win }
   M.teardown()
   for _, w in ipairs(wins) do
     if w and vim.api.nvim_win_is_valid(w) then

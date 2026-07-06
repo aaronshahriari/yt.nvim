@@ -35,16 +35,27 @@ local function render_image(path)
     end)
     st.image = nil
   end
-  if not (has_image and st.right_win and vim.api.nvim_win_is_valid(st.right_win)) then
+  if not (has_image and st.preview_win and vim.api.nvim_win_is_valid(st.preview_win)) then
     return
   end
-  local ok, img = pcall(image_api.from_file, path, {
-    window = st.right_win,
-    buffer = st.right_buf,
+  -- Anchor at the empty first buffer line and let image.nvim reserve the space:
+  --   * with_virtual_padding pushes the text below by the image's *actual* height
+  --   * max_width fills the pane, so the image tracks the split as it resizes
+  --   * max_height caps it to the pane so a wide image never overflows a short one
+  -- image.height is an optional ceiling; without it the width fit drives the size.
+  local opts = {
+    window = st.preview_win,
+    buffer = st.preview_buf,
     x = 0,
     y = 0,
-    height = config.options.image.height,
-  })
+    max_width_window_percentage = 100,
+    max_height_window_percentage = 100,
+    with_virtual_padding = true,
+  }
+  if config.options.image.height then
+    opts.height = config.options.image.height
+  end
+  local ok, img = pcall(image_api.from_file, path, opts)
   if ok and img then
     st.image = img
     pcall(function()
@@ -56,12 +67,12 @@ end
 local function render_text(result)
   local ui = require("yt.ui")
   local st = ui.state()
-  local h = config.options.image.height
 
   local lines = {}
-  for _ = 1, h do
-    lines[#lines + 1] = ""
+  if has_image then
+    lines[#lines + 1] = "" -- anchor row the thumbnail is drawn over
   end
+  local title_idx = #lines
   lines[#lines + 1] = result.title or ""
 
   local meta = {}
@@ -70,16 +81,18 @@ local function render_text(result)
       meta[#meta + 1] = field
     end
   end
+  local meta_idx = #lines
   lines[#lines + 1] = table.concat(meta, "  •  ")
-  lines[#lines + 1] = ""
+
   if result.description_snippet and result.description_snippet ~= "" then
+    lines[#lines + 1] = ""
     lines[#lines + 1] = result.description_snippet
   end
 
-  ui.set_lines(st.right_buf, lines)
-  vim.api.nvim_buf_clear_namespace(st.right_buf, st.ns, 0, -1)
-  vim.api.nvim_buf_set_extmark(st.right_buf, st.ns, h, 0, { line_hl_group = "Title" })
-  vim.api.nvim_buf_set_extmark(st.right_buf, st.ns, h + 1, 0, { line_hl_group = "Comment" })
+  ui.set_lines(st.preview_buf, lines)
+  vim.api.nvim_buf_clear_namespace(st.preview_buf, st.ns, 0, -1)
+  vim.api.nvim_buf_set_extmark(st.preview_buf, st.ns, title_idx, 0, { line_hl_group = "Title" })
+  vim.api.nvim_buf_set_extmark(st.preview_buf, st.ns, meta_idx, 0, { line_hl_group = "Comment" })
 end
 
 --- Show a result in the preview pane: text immediately, image once available.

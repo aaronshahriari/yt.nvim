@@ -2,12 +2,16 @@ local M = {}
 
 local defaults = {
   bin_path = nil, -- explicit path to the `yt` helper; auto-resolved if nil
-  limit = 10, -- results per search
-  preview_width = 0.5, -- right pane fraction of total columns
+  per_page = 10, -- results shown per page
+  max_pages = 5, -- max pages fetched per search (total = per_page * max_pages)
+  results_side = "left", -- which side the results list sits on ("left"|"right")
+  preview_width = 0.5, -- preview pane fraction of total columns
   debounce_ms = 100, -- hover debounce before rendering a preview
   use_ytdlp_fallback = true, -- pass-through to the helper (fallback is on by default there)
   image = {
-    height = 18, -- rows the thumbnail occupies at the top of the preview pane
+    -- Optional max thumbnail height in rows. nil (default) fills the split width
+    -- and lets the height follow the aspect ratio; set a number to cap it shorter.
+    height = nil,
   },
   player = {
     cmd = { "mpv" }, -- youtube URL is appended; mpv drives yt-dlp
@@ -16,6 +20,8 @@ local defaults = {
     play = "<CR>", -- play highlighted result via the player
     quit = "q", -- close the yt.nvim tab
     search = "s", -- start a new search
+    page_next = "L", -- next page of results
+    page_prev = "H", -- previous page of results
   },
 }
 

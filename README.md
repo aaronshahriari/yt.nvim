@@ -116,29 +116,80 @@ In the results pane:
 | Key     | Action                          |
 | ------- | ------------------------------- |
 | `j`/`k` | move — preview updates on hover |
+| `H`/`L` | previous / next page            |
 | `<CR>`  | play the highlighted video (mpv)|
 | `s`     | new search                      |
 | `q`     | close                           |
 
 ## Configuration
 
-Defaults (pass overrides to `opts` / `require("yt").setup{}`):
+Pass overrides to `require("yt").setup{}` (or the `opts` table with lazy.nvim). Anything
+you omit keeps its default:
 
 ```lua
-{
-  bin_path = nil,            -- explicit path to the `yt` helper (auto-resolved otherwise)
-  limit = 10,               -- results per search
-  preview_width = 0.5,      -- right pane fraction of total width
-  debounce_ms = 100,        -- hover debounce before rendering a preview
-  use_ytdlp_fallback = true,
-  image = { height = 18 },  -- thumbnail height in rows
-  player = { cmd = { "mpv" } }, -- youtube URL is appended
-  keymaps = { play = "<CR>", quit = "q", search = "s" },
-}
+require("yt").setup({
+  per_page = 10,            -- results shown per page
+  max_pages = 5,            -- max pages fetched per search (total = per_page * max_pages)
+  results_side = "left",    -- which side the results list sits on: "left" | "right"
+  preview_width = 0.5,      -- preview pane width as a fraction of the editor columns
+  debounce_ms = 100,        -- hover delay (ms) before a preview renders
+  use_ytdlp_fallback = true,-- fall back to yt-dlp if InnerTube returns nothing
+  bin_path = nil,           -- explicit path to the `yt` helper (auto-resolved otherwise)
+  image = { height = nil },  -- optional max thumbnail height in rows (nil = fill the split width)
+  player = { cmd = { "mpv" } }, -- launched with the video URL appended
+  keymaps = {
+    play = "<CR>",          -- play the highlighted result
+    search = "s",           -- start a new search
+    quit = "q",             -- close the yt.nvim tab
+    page_next = "L",        -- next page
+    page_prev = "H",        -- previous page
+  },
+})
 ```
 
-Want audio-only, or to open in a browser instead? Swap `player.cmd`, e.g.
-`{ "mpv", "--no-video" }` or `{ "xdg-open" }`.
+| Option               | Default        | What it does                                                        |
+| -------------------- | -------------- | ------------------------------------------------------------------- |
+| `per_page`           | `10`           | Results shown per page.                                             |
+| `max_pages`          | `5`            | Max pages fetched per search (total results = `per_page × max_pages`). |
+| `results_side`       | `"left"`       | Side the results list appears on; the preview takes the other side. |
+| `preview_width`      | `0.5`          | Fraction of the window width given to the preview pane (`0`–`1`).    |
+| `debounce_ms`        | `100`          | Delay after cursor movement before the preview updates.             |
+| `use_ytdlp_fallback` | `true`         | Use yt-dlp when the InnerTube API returns no results.               |
+| `bin_path`           | `nil`          | Path to the `yt` helper binary; auto-detected when `nil`.           |
+| `image.height`       | `nil`          | Optional max thumbnail height in rows; `nil` fills the split width.  |
+| `player.cmd`         | `{ "mpv" }`    | Command used for playback; the video URL is appended.               |
+| `keymaps`            | see above      | Buffer-local keys in the results pane.                              |
+
+### Recipes
+
+```lua
+-- Results on the right, wider preview, more per page and more pages
+require("yt").setup({ results_side = "right", preview_width = 0.6, per_page = 20, max_pages = 10 })
+
+-- Audio only
+require("yt").setup({ player = { cmd = { "mpv", "--no-video" } } })
+
+-- Open in the browser instead of mpv
+require("yt").setup({ player = { cmd = { "xdg-open" } } })
+```
+
+### Lua API
+
+The built-in keymaps just call these — bind them to your own keys instead if you prefer.
+Set the corresponding `keymaps.*` entry to `false`/`nil` to drop a default binding.
+
+```lua
+local yt = require("yt")
+yt.open("lofi hip hop") -- open + search (omit the arg to be prompted)
+yt.next_page()          -- next page of results
+yt.prev_page()          -- previous page
+yt.play()               -- play the result under the cursor
+yt.close()              -- close the tab
+
+-- e.g. page with Ctrl-n / Ctrl-p on top of the default H / L
+vim.keymap.set("n", "<C-n>", yt.next_page)
+vim.keymap.set("n", "<C-p>", yt.prev_page)
+```
 
 ## Helper binary
 

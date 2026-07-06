@@ -109,8 +109,10 @@ fn cmd_thumbnail(args: &[String]) -> i32 {
     }
 
     let client = http_client();
-    // hqdefault is always present; mqdefault as a smaller fallback.
-    for quality in ["hqdefault", "mqdefault"] {
+    // Highest quality first: maxresdefault (1280x720) is sharpest but not always
+    // generated, so fall through to progressively smaller sizes on a 404. hqdefault
+    // is always present as the floor.
+    for quality in ["maxresdefault", "sddefault", "hqdefault", "mqdefault"] {
         let url = format!("https://i.ytimg.com/vi/{id}/{quality}.jpg");
         match client.get(&url).header("User-Agent", UA).send() {
             Ok(resp) if resp.status().is_success() => match resp.bytes() {
