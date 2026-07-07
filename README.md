@@ -120,10 +120,13 @@ videos. Playback records a video into history, and the default mpv command
 saves/resumes playback position.
 
 **Offline downloads.** Press `i` on any video to download it with yt-dlp into
-`stdpath("data")/yt.nvim/downloads/`. Installed videos are marked with a  icon
-everywhere they appear (including inside playlists) and gain their own **Installed**
-section. Playing an installed video uses the local file, so it works offline. mpv is
-launched fully detached, so it keeps running after you close Neovim or the terminal.
+`stdpath("data")/yt.nvim/downloads/`. The thumbnail is fetched next to the video,
+so the Installed list shows images even with no connection. Installed videos are
+marked with a  icon everywhere they appear (including inside playlists) and gain
+their own **Installed** section. Playing an installed video uses the local file, so
+it works offline — home screen, Installed list, and playback all run with no
+network. mpv is launched fully detached, so it keeps running after you close
+Neovim or the terminal.
 
 The dashboard is a compact summary — each section shows a handful of items (see
 `home` in [Configuration](#configuration)), with a `… and N more` line when

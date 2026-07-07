@@ -144,8 +144,17 @@ function M.installed_path(id)
   return i and list[i].path or nil
 end
 
---- Record a downloaded video (front of the list, deduped by id).
-function M.install_add(video, path)
+--- Absolute path to the downloaded-alongside thumbnail for `id`, or nil.
+function M.installed_thumbnail(id)
+  local list = M.installed_list()
+  local i = index_of(list, id)
+  return i and list[i].thumbnail or nil
+end
+
+--- Record a downloaded video (front of the list, deduped by id). `thumbnail` is
+--- the video's poster stored beside the file, so the Installed list has images
+--- offline.
+function M.install_add(video, path, thumbnail)
   if not (video and video.id) then
     return
   end
@@ -153,21 +162,26 @@ function M.install_add(video, path)
   if not index_of(list, video.id) then
     local entry = clean(video)
     entry.path = path
+    entry.thumbnail = thumbnail
     table.insert(list, 1, entry)
     write("installed.json", list)
   end
 end
 
---- Drop the installed record; delete the file too when `delete_file`.
+--- Drop the installed record; delete the video + its thumbnail when `delete_file`.
 function M.uninstall(id, delete_file)
   local list = M.installed_list()
   local i = index_of(list, id)
   if i then
-    local path = list[i].path
+    local entry = list[i]
     table.remove(list, i)
     write("installed.json", list)
-    if delete_file and path and path ~= "" then
-      vim.fn.delete(path)
+    if delete_file then
+      for _, p in ipairs({ entry.path, entry.thumbnail }) do
+        if p and p ~= "" then
+          vim.fn.delete(p)
+        end
+      end
     end
   end
 end

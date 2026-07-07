@@ -56,23 +56,42 @@ function M.install(video, on_done)
   job.stream(cmd, {
     on_exit = function(res)
       active[video.id] = nil
-      if res.code == 0 then
-        -- The extension depends on the chosen format, so glob for id.* and skip
-        -- any partial (.part) leftovers.
-        local path
-        for _, m in ipairs(vim.fn.glob(dir .. "/" .. video.id .. ".*", false, true)) do
-          if not m:match("%.part$") then
-            path = m
-            break
-          end
-        end
-        store.install_add(video, path)
-        vim.notify("yt.nvim: installed " .. (video.title or video.id), vim.log.levels.INFO)
-      else
+      if res.code ~= 0 then
         vim.notify("yt.nvim: download failed — " .. (video.title or video.id), vim.log.levels.ERROR)
+        if on_done then
+          on_done(false)
+        end
+        return
       end
+
+      -- The extension depends on the chosen format, so glob for id.* and skip
+      -- partial (.part) leftovers and the thumbnail (.jpg) we fetch next.
+      local path
+      for _, m in ipairs(vim.fn.glob(dir .. "/" .. video.id .. ".*", false, true)) do
+        if not (m:match("%.part$") or m:match("%.jpg$")) then
+          path = m
+          break
+        end
+      end
+
+      -- Store the poster beside the video (persistent, unlike the cache dir) so
+      -- the Installed list shows thumbnails offline.
+      local thumb = dir .. "/" .. video.id .. ".jpg"
+      store.install_add(video, path, thumb)
+      vim.notify("yt.nvim: installed " .. (video.title or video.id), vim.log.levels.INFO)
       if on_done then
-        on_done(res.code == 0)
+        on_done(true)
+      end
+
+      local bin = config.bin_path()
+      if bin then
+        job.stream({ bin, "thumbnail", video.id, "--out", dir }, {
+          on_exit = function()
+            if on_done then
+              on_done(true) -- refresh once the poster lands
+            end
+          end,
+        })
       end
     end,
     stderr = function() end,

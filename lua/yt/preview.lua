@@ -26,9 +26,23 @@ local function is_video_id(id)
   return type(id) == "string" and #id == 11
 end
 
---- Kick off a background thumbnail download (no-op if cached or no binary).
+--- An already-available thumbnail for `id`: the one stored beside an installed
+--- video (durable, works offline) first, then the cache. nil if neither exists.
+local function existing_thumb(id)
+  local installed = require("yt.store").installed_thumbnail(id)
+  if installed and vim.fn.filereadable(installed) == 1 then
+    return installed
+  end
+  local cached = thumb_path(id)
+  if vim.fn.filereadable(cached) == 1 then
+    return cached
+  end
+  return nil
+end
+
+--- Kick off a background thumbnail download (no-op if already available or no binary).
 function M.prefetch(result)
-  if not is_video_id(result.id) or vim.fn.filereadable(thumb_path(result.id)) == 1 then
+  if not is_video_id(result.id) or existing_thumb(result.id) then
     return
   end
   local bin = config.bin_path()
@@ -143,9 +157,9 @@ function M.update(result)
     return
   end
 
-  local path = thumb_path(result.id)
-  if vim.fn.filereadable(path) == 1 then
-    render_image(path)
+  local existing = existing_thumb(result.id)
+  if existing then
+    render_image(existing)
     return
   end
 
@@ -153,11 +167,12 @@ function M.update(result)
   if not bin then
     return
   end
+  local cached = thumb_path(result.id)
   require("yt.job").stream({ bin, "thumbnail", result.id, "--out", cache_dir() }, {
     on_exit = function(res)
       -- only render if the user is still on this result
-      if res.code == 0 and pane.current_id == result.id and vim.fn.filereadable(path) == 1 then
-        render_image(path)
+      if res.code == 0 and pane.current_id == result.id and vim.fn.filereadable(cached) == 1 then
+        render_image(cached)
       end
     end,
   })
