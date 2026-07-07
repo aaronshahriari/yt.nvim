@@ -4,6 +4,11 @@ local M = {}
 
 -- image.nvim is optional; without it we still show title/metadata text.
 local has_image, image_api = pcall(require, "image")
+local ns = vim.api.nvim_create_namespace("yt_preview")
+
+-- The preview pane is shared between the search and home views; whichever view
+-- is active attaches its right-hand window/buffer here.
+local pane = { win = nil, buf = nil, image = nil, current_id = nil }
 
 local function cache_dir()
   local dir = vim.fn.stdpath("cache") .. "/yt.nvim"
@@ -27,15 +32,39 @@ function M.prefetch(result)
   require("yt.job").stream({ bin, "thumbnail", result.id, "--out", cache_dir() }, {})
 end
 
-local function render_image(path)
-  local st = require("yt.ui").state()
-  if st.image then
+local function clear_image()
+  if pane.image then
     pcall(function()
-      st.image:clear()
+      pane.image:clear()
     end)
-    st.image = nil
+    pane.image = nil
   end
-  if not (has_image and st.preview_win and vim.api.nvim_win_is_valid(st.preview_win)) then
+end
+
+--- Bind the preview to a window/buffer (call on view open). Resets prior state.
+function M.attach(win, buf)
+  M.detach()
+  pane.win, pane.buf = win, buf
+end
+
+--- Clear the current image and unbind.
+function M.detach()
+  clear_image()
+  pane.win, pane.buf, pane.current_id = nil, nil, nil
+end
+
+local function set_buf_lines(buf, lines)
+  if not (buf and vim.api.nvim_buf_is_valid(buf)) then
+    return
+  end
+  vim.bo[buf].modifiable = true
+  vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+  vim.bo[buf].modifiable = false
+end
+
+local function render_image(path)
+  clear_image()
+  if not (has_image and pane.win and vim.api.nvim_win_is_valid(pane.win)) then
     return
   end
   -- Anchor at the empty first buffer line and let image.nvim reserve the space:
@@ -44,8 +73,8 @@ local function render_image(path)
   --   * max_height caps it to the pane so a wide image never overflows a short one
   -- image.height is an optional ceiling; without it the width fit drives the size.
   local opts = {
-    window = st.preview_win,
-    buffer = st.preview_buf,
+    window = pane.win,
+    buffer = pane.buf,
     x = 0,
     y = 0,
     max_width_window_percentage = 100,
@@ -57,7 +86,7 @@ local function render_image(path)
   end
   local ok, img = pcall(image_api.from_file, path, opts)
   if ok and img then
-    st.image = img
+    pane.image = img
     pcall(function()
       img:render()
     end)
@@ -65,9 +94,6 @@ local function render_image(path)
 end
 
 local function render_text(result)
-  local ui = require("yt.ui")
-  local st = ui.state()
-
   local lines = {}
   if has_image then
     lines[#lines + 1] = "" -- anchor row the thumbnail is drawn over
@@ -89,16 +115,21 @@ local function render_text(result)
     lines[#lines + 1] = result.description_snippet
   end
 
-  ui.set_lines(st.preview_buf, lines)
-  vim.api.nvim_buf_clear_namespace(st.preview_buf, st.ns, 0, -1)
-  vim.api.nvim_buf_set_extmark(st.preview_buf, st.ns, title_idx, 0, { line_hl_group = "Title" })
-  vim.api.nvim_buf_set_extmark(st.preview_buf, st.ns, meta_idx, 0, { line_hl_group = "Comment" })
+  set_buf_lines(pane.buf, lines)
+  if pane.buf and vim.api.nvim_buf_is_valid(pane.buf) then
+    vim.api.nvim_buf_clear_namespace(pane.buf, ns, 0, -1)
+    vim.api.nvim_buf_set_extmark(pane.buf, ns, title_idx, 0, { line_hl_group = "Title" })
+    vim.api.nvim_buf_set_extmark(pane.buf, ns, meta_idx, 0, { line_hl_group = "Comment" })
+  end
 end
 
 --- Show a result in the preview pane: text immediately, image once available.
+--- Deduped by id, so repeat calls for the same video are cheap.
 function M.update(result)
-  local st = require("yt.ui").state()
-  st.preview_id = result.id
+  if not (result and result.id) or pane.current_id == result.id then
+    return
+  end
+  pane.current_id = result.id
   render_text(result)
 
   local path = thumb_path(result.id)
@@ -114,7 +145,7 @@ function M.update(result)
   require("yt.job").stream({ bin, "thumbnail", result.id, "--out", cache_dir() }, {
     on_exit = function(res)
       -- only render if the user is still on this result
-      if res.code == 0 and st.preview_id == result.id and vim.fn.filereadable(path) == 1 then
+      if res.code == 0 and pane.current_id == result.id and vim.fn.filereadable(path) == 1 then
         render_image(path)
       end
     end,

@@ -4,17 +4,20 @@ function M.setup(opts)
   require("yt.config").setup(opts)
 end
 
---- Open the yt.nvim UI. With a query, search immediately; otherwise prompt.
+--- Open yt.nvim. With a query, search immediately; otherwise show the home screen.
 function M.open(query)
-  require("yt.ui").open()
   if query and query ~= "" then
+    local home = require("yt.home")
+    if home.is_open() then
+      home.close()
+    end
     require("yt.search").run(query)
   else
-    vim.ui.input({ prompt = "YouTube search: " }, function(input)
-      if input and input ~= "" then
-        require("yt.search").run(input)
-      end
-    end)
+    local ui = require("yt.ui")
+    if ui.is_open() then
+      ui.close()
+    end
+    require("yt.home").open()
   end
 end
 
@@ -35,15 +38,30 @@ end
 
 --- Play the result under the cursor via the configured player.
 function M.play()
-  local r = require("yt.ui").current_result()
-  if r then
-    require("yt.player").play(r)
+  local ui = require("yt.ui")
+  if ui.is_open() then
+    local r = ui.current_result()
+    if r then
+      require("yt.player").play(r)
+    end
+    return
+  end
+  local home = require("yt.home")
+  if home.is_open() then
+    home.action_play()
   end
 end
 
 --- Close the yt.nvim tab.
 function M.close()
-  require("yt.ui").close()
+  local ui = require("yt.ui")
+  if ui.is_open() then
+    ui.close()
+  end
+  local home = require("yt.home")
+  if home.is_open() then
+    home.close()
+  end
 end
 
 return M

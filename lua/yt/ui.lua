@@ -90,6 +90,7 @@ function M.open()
   vim.api.nvim_win_set_buf(results_win, state.results_buf)
   vim.api.nvim_win_set_buf(preview_win, state.preview_buf)
   state.results_win, state.preview_win = results_win, preview_win
+  require("yt.preview").attach(preview_win, state.preview_buf)
 
   pcall(vim.api.nvim_win_set_width, preview_win, math.floor(vim.o.columns * config.options.preview_width))
 
@@ -159,9 +160,30 @@ end
 
 function M.preview_current()
   local r = M.current_result()
-  if r and r.id ~= state.preview_id then
+  if r then
     require("yt.preview").update(r)
   end
+end
+
+local function add_to_playlist(video)
+  local store = require("yt.store")
+  local choices = vim.list_extend({ "New playlist..." }, store.playlist_names())
+  vim.ui.select(choices, { prompt = "Add to playlist:" }, function(choice)
+    if not choice then
+      return
+    end
+    if choice == "New playlist..." then
+      vim.ui.input({ prompt = "New playlist name: " }, function(name)
+        if name and name ~= "" then
+          store.playlist_add(name, video)
+          vim.notify("yt.nvim: added to " .. name, vim.log.levels.INFO)
+        end
+      end)
+    else
+      store.playlist_add(choice, video)
+      vim.notify("yt.nvim: added to " .. choice, vim.log.levels.INFO)
+    end
+  end)
 end
 
 --- Warm the thumbnail cache for the current page's results.
@@ -212,7 +234,25 @@ function M.setup_keymaps()
     end
   end)
   map(km.search, function()
-    require("yt").open()
+    require("yt.search").prompt()
+  end)
+  map(km.pin, function()
+    local r = M.current_result()
+    if r then
+      local store = require("yt.store")
+      local was_pinned = store.is_pinned(r.id)
+      store.pinned_toggle(r)
+      vim.notify(
+        "yt.nvim: " .. (was_pinned and "unpinned " or "pinned ") .. (r.title or r.id),
+        vim.log.levels.INFO
+      )
+    end
+  end)
+  map(km.add_to_playlist, function()
+    local r = M.current_result()
+    if r then
+      add_to_playlist(r)
+    end
   end)
   map(km.quit, function()
     M.close()
@@ -249,12 +289,7 @@ end
 
 --- Drop image + state without touching windows (windows already gone).
 function M.teardown()
-  if state.image then
-    pcall(function()
-      state.image:clear()
-    end)
-    state.image = nil
-  end
+  require("yt.preview").detach()
   state.open = false
   state.results = {}
   state.page = 1

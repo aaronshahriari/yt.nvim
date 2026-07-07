@@ -3,7 +3,21 @@ local job = require("yt.job")
 
 local M = {}
 
+--- Ask for a query, then search. Used by the `search` keybind in both views.
+function M.prompt()
+  vim.ui.input({ prompt = "YouTube search: " }, function(input)
+    if input and input ~= "" then
+      M.run(input)
+    end
+  end)
+end
+
 function M.run(query)
+  local home = require("yt.home")
+  if home.is_open() then
+    home.close()
+  end
+
   local ui = require("yt.ui")
   if not ui.is_open() then
     ui.open()
@@ -21,11 +35,11 @@ function M.run(query)
 
   st.results = {}
   st.page = 1
-  st.preview_id = nil
   ui.set_query(query)
   ui.render_results() -- shows "Searching…"
 
   local preview = require("yt.preview")
+  preview.attach(st.preview_win, st.preview_buf) -- reset preview for the new search
   local total = config.options.per_page * config.options.max_pages
   local cmd = { bin, "search", query, "--limit", tostring(total) }
   if not config.options.use_ytdlp_fallback then

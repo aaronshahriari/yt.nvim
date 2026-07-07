@@ -1,18 +1,19 @@
 # yt.nvim
 
-Search and watch YouTube directly from Neovim. A two-pane UI: type a query, results
-stream into the left pane, and moving your cursor over a result renders its thumbnail
-(inline, via the Kitty graphics protocol) with title/description in the right pane.
+Search and watch YouTube directly from Neovim. `:Yt` opens a home screen with
+recently watched videos, pinned videos, and local playlists; `:Yt <query>` jumps
+straight into search. Both views use a two-pane UI: videos on one side, thumbnail
+(inline, via the Kitty graphics protocol) and metadata preview on the other.
 Hit `<CR>` to play the video in mpv.
 
 ```
 ┌── YouTube: lofi ─────────────┬──────────────────────────────┐
 │  lofi hip hop radio 📚 …     │   ┌────────────────────────┐ │
 │  lofi hip hop radio- 24/7 …  │   │      (thumbnail)       │ │
-│▸ 90's Lofi City 🌧️ Rainy …  │   └────────────────────────┘ │
+│▸ 90's Lofi City 🌧️ Rainy …   │   └────────────────────────┘ │
 │  Coffee Shop Radio - 24/7 …  │   90's Lofi City 🌧️ …        │
-│  …                           │   Lofi Girl • 1.2M views      │
-│                              │   beats to relax/study to …   │
+│  …                           │   Lofi Girl • 1.2M views     │
+│                              │   beats to relax/study to …  │
 └──────────────────────────────┴──────────────────────────────┘
 ```
 
@@ -107,9 +108,28 @@ On Nix, `nix develop` provides `cargo`, `imagemagick`, `mpv`, and `yt-dlp` for l
 
 ## Usage
 
-- `:Yt` — open the UI and prompt for a search
+- `:Yt` — open the home screen
 - `:Yt <query>` — open and search immediately
 - `:YtBuild` — (re)download or build the helper binary
+
+The home screen stores its runtime state under `stdpath("data")/yt.nvim/`:
+recently watched videos, pinned videos, and local playlists. Playback records a
+video into history, and the default mpv command saves/resumes playback position.
+
+In the home pane:
+
+| Key    | Action                                      |
+| ------ | ------------------------------------------- |
+| `j`/`k` | move — preview updates on hover             |
+| `<CR>` | play video / expand or collapse playlist    |
+| `s`    | new search                                  |
+| `p`    | pin/unpin highlighted video                 |
+| `a`    | add highlighted video to a local playlist   |
+| `d`    | remove highlighted item from its section    |
+| `gr`   | jump to Recently watched                    |
+| `gp`   | jump to Pinned                              |
+| `gl`   | jump to Playlists                           |
+| `q`    | close                                       |
 
 In the results pane:
 
@@ -119,6 +139,8 @@ In the results pane:
 | `H`/`L` | previous / next page            |
 | `<CR>`  | play the highlighted video (mpv)|
 | `s`     | new search                      |
+| `p`     | pin/unpin highlighted result    |
+| `a`     | add result to a local playlist  |
 | `q`     | close                           |
 
 ## Configuration
@@ -130,19 +152,33 @@ you omit keeps its default:
 require("yt").setup({
   per_page = 10,            -- results shown per page
   max_pages = 5,            -- max pages fetched per search (total = per_page * max_pages)
+  history_limit = 30,       -- recently watched entries kept on disk
   results_side = "left",    -- which side the results list sits on: "left" | "right"
   preview_width = 0.5,      -- preview pane width as a fraction of the editor columns
   debounce_ms = 100,        -- hover delay (ms) before a preview renders
   use_ytdlp_fallback = true,-- fall back to yt-dlp if InnerTube returns nothing
   bin_path = nil,           -- explicit path to the `yt` helper (auto-resolved otherwise)
   image = { height = nil },  -- optional max thumbnail height in rows (nil = fill the split width)
-  player = { cmd = { "mpv" } }, -- launched with the video URL appended
+  player = { cmd = { "mpv", "--save-position-on-quit=yes" } }, -- video URL appended
   keymaps = {
     play = "<CR>",          -- play the highlighted result
     search = "s",           -- start a new search
+    pin = "p",              -- pin/unpin the highlighted result
+    add_to_playlist = "a",  -- add the highlighted result to a local playlist
     quit = "q",             -- close the yt.nvim tab
     page_next = "L",        -- next page
     page_prev = "H",        -- previous page
+  },
+  home_keymaps = {
+    play = "<CR>",          -- play highlighted video / expand playlist
+    search = "s",           -- start a new search
+    pin = "p",              -- pin/unpin highlighted video
+    add_to_playlist = "a",  -- add highlighted video to a local playlist
+    remove = "d",           -- remove highlighted item from its section
+    jump_recent = "gr",     -- jump to recently watched
+    jump_pinned = "gp",     -- jump to pinned
+    jump_playlists = "gl",  -- jump to playlists
+    quit = "q",             -- close the yt.nvim tab
   },
 })
 ```
@@ -151,14 +187,16 @@ require("yt").setup({
 | -------------------- | -------------- | ------------------------------------------------------------------- |
 | `per_page`           | `10`           | Results shown per page.                                             |
 | `max_pages`          | `5`            | Max pages fetched per search (total results = `per_page × max_pages`). |
+| `history_limit`      | `30`           | Recently watched entries kept on disk.                              |
 | `results_side`       | `"left"`       | Side the results list appears on; the preview takes the other side. |
 | `preview_width`      | `0.5`          | Fraction of the window width given to the preview pane (`0`–`1`).    |
 | `debounce_ms`        | `100`          | Delay after cursor movement before the preview updates.             |
 | `use_ytdlp_fallback` | `true`         | Use yt-dlp when the InnerTube API returns no results.               |
 | `bin_path`           | `nil`          | Path to the `yt` helper binary; auto-detected when `nil`.           |
 | `image.height`       | `nil`          | Optional max thumbnail height in rows; `nil` fills the split width.  |
-| `player.cmd`         | `{ "mpv" }`    | Command used for playback; the video URL is appended.               |
+| `player.cmd`         | `{ "mpv", "--save-position-on-quit=yes" }` | Command used for playback; the video URL is appended. |
 | `keymaps`            | see above      | Buffer-local keys in the results pane.                              |
+| `home_keymaps`       | see above      | Buffer-local keys in the home pane.                                 |
 
 ### Recipes
 
@@ -167,7 +205,7 @@ require("yt").setup({
 require("yt").setup({ results_side = "right", preview_width = 0.6, per_page = 20, max_pages = 10 })
 
 -- Audio only
-require("yt").setup({ player = { cmd = { "mpv", "--no-video" } } })
+require("yt").setup({ player = { cmd = { "mpv", "--save-position-on-quit=yes", "--no-video" } } })
 
 -- Open in the browser instead of mpv
 require("yt").setup({ player = { cmd = { "xdg-open" } } })

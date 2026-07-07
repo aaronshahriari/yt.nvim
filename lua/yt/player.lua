@@ -13,6 +13,7 @@ function M.play(result)
   cmd[#cmd + 1] = M.url(result)
   local ok, err = pcall(vim.system, cmd, { detach = true })
   if ok then
+    pcall(require("yt.store").history_add, result)
     vim.notify("yt.nvim: playing " .. (result.title or result.id), vim.log.levels.INFO)
   else
     vim.notify("yt.nvim: failed to launch player: " .. tostring(err), vim.log.levels.ERROR)
