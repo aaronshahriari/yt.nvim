@@ -161,6 +161,7 @@ In the results pane:
 | `p`     | pin/unpin highlighted result    |
 | `a`     | add result to a local playlist  |
 | `i`     | download result for offline play|
+| `gh`    | back to the home screen         |
 | `q`     | close                           |
 
 ## Configuration
@@ -209,6 +210,7 @@ require("yt").setup({
   },
   keymaps = {
     play = "<CR>",          -- play the highlighted result
+    home = "gh",            -- back to the home screen
     search = "s",           -- start a new search
     pin = "p",              -- pin/unpin the highlighted result
     add_to_playlist = "a",  -- add the highlighted result to a local playlist

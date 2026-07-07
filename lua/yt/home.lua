@@ -111,7 +111,6 @@ local function build()
       end
       more(#items, limit)
     end
-    blank()
   end
 
   local function playlists_section(limit, item_limit)
@@ -160,10 +159,17 @@ local function build()
       render(config.options.pages[filter] or {})
     end
   else
+    -- Separate sections with a single blank line (between, not trailing) so the
+    -- spacing stays right whatever order `home.sections` puts them in.
+    local first = true
     for _, section in ipairs(config.options.home.sections) do
       local render = renderers[section]
       if render then
+        if not first then
+          blank()
+        end
         render(config.options.home[section] or {})
+        first = false
       end
     end
   end

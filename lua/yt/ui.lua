@@ -260,6 +260,9 @@ function M.setup_keymaps()
       require("yt.install").install(r)
     end
   end)
+  map(km.home, function()
+    require("yt").open() -- closes search, opens the home screen
+  end)
   map(km.quit, function()
     M.close()
   end)

@@ -51,6 +51,7 @@ local defaults = {
   keymaps = {
     play = "<CR>", -- play highlighted result via the player
     quit = "q", -- close the yt.nvim tab
+    home = "gh", -- go back to the home screen
     search = "s", -- start a new search
     pin = "p", -- pin/unpin highlighted result
     add_to_playlist = "a", -- add highlighted result to a local playlist
