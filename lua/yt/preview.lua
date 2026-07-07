@@ -20,9 +20,15 @@ local function thumb_path(id)
   return cache_dir() .. "/" .. id .. ".jpg"
 end
 
+-- Only videos have i.ytimg.com thumbnails. Video ids are 11 chars; channel (UC…)
+-- and playlist (PL…) ids are longer, so skip the doomed fetch for those.
+local function is_video_id(id)
+  return type(id) == "string" and #id == 11
+end
+
 --- Kick off a background thumbnail download (no-op if cached or no binary).
 function M.prefetch(result)
-  if vim.fn.filereadable(thumb_path(result.id)) == 1 then
+  if not is_video_id(result.id) or vim.fn.filereadable(thumb_path(result.id)) == 1 then
     return
   end
   local bin = config.bin_path()
@@ -131,6 +137,11 @@ function M.update(result)
   end
   pane.current_id = result.id
   render_text(result)
+
+  if not is_video_id(result.id) then
+    clear_image() -- channels/playlists have no thumbnail; show text only
+    return
+  end
 
   local path = thumb_path(result.id)
   if vim.fn.filereadable(path) == 1 then

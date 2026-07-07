@@ -28,6 +28,22 @@ local defaults = {
   icons = {
     installed = "", -- shown next to a locally downloaded video (nf-fa-download)
     downloading = "", -- shown while a download is in progress (nf-fa-cloud_download)
+    video = "●", -- bullet for a video row
+    channel = "", -- channel row (nf-fa-users)
+    playlist = "", -- playlist row (nf-fa-list)
+  },
+  -- Search results: which sections appear (in order) and their caps. Channels
+  -- come from the same request as videos, so showing them is free.
+  search = {
+    sections = { "channels", "videos" },
+    channels = { limit = 5 }, -- max channels shown atop the results
+  },
+  -- The channel page (opened with <CR> on a channel): its sections + caps.
+  channel = {
+    sections = { "videos", "playlists" },
+    videos = { limit = nil }, -- nil = show everything fetched
+    playlists = { limit = nil },
+    fetch_limit = 30, -- how many videos/playlists to pull from the channel
   },
   -- The home dashboard: which sections show (in this order) and how many items
   -- each shows in the compact combined view. Drop a section from `sections` to
@@ -49,9 +65,10 @@ local defaults = {
     playlists = { limit = nil, items = nil },
   },
   keymaps = {
-    play = "<CR>", -- play highlighted result via the player
+    play = "<CR>", -- play video / open channel or playlist under the cursor
     quit = "q", -- close the yt.nvim tab
     home = "gh", -- go back to the home screen
+    back = "<BS>", -- pop back one view (channel/playlist -> where you came from)
     search = "s", -- start a new search
     pin = "p", -- pin/unpin highlighted result
     add_to_playlist = "a", -- add highlighted result to a local playlist
@@ -82,6 +99,8 @@ M.options = vim.deepcopy(defaults)
 -- shorter user list would leave stale tail entries), so these must replace outright.
 local LIST_OVERRIDES = {
   { "home", "sections" },
+  { "search", "sections" },
+  { "channel", "sections" },
   { "player", "cmd" },
   { "download", "args" },
 }

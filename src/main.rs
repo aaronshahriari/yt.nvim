@@ -2,6 +2,7 @@ mod innertube;
 mod model;
 mod ytdlp;
 
+use model::Item;
 use std::io::Write;
 use std::path::PathBuf;
 use std::process::exit;
@@ -13,15 +14,34 @@ fn main() {
     let args: Vec<String> = std::env::args().collect();
     let code = match args.get(1).map(String::as_str) {
         Some("search") => cmd_search(&args[2..]),
+        Some("channel") => cmd_channel(&args[2..]),
+        Some("playlist") => cmd_playlist(&args[2..]),
         Some("thumbnail") => cmd_thumbnail(&args[2..]),
         _ => {
-            eprintln!("usage: yt <search|thumbnail> ...");
-            eprintln!("  yt search \"<query>\" [--limit N] [--no-fallback]");
+            eprintln!("usage: yt <search|channel|playlist|thumbnail> ...");
+            eprintln!("  yt search \"<query>\" [--limit N] [--channel-limit N] [--no-fallback]");
+            eprintln!("  yt channel <id> [--limit N]");
+            eprintln!("  yt playlist <id> [--limit N]");
             eprintln!("  yt thumbnail <id> [--out <dir>]");
             2
         }
     };
     exit(code);
+}
+
+/// Write each item as a flushed NDJSON line to stdout.
+fn emit_items(items: &[Item]) {
+    let stdout = std::io::stdout();
+    let mut lock = stdout.lock();
+    for item in items {
+        match serde_json::to_string(item) {
+            Ok(line) => {
+                let _ = writeln!(lock, "{line}");
+                let _ = lock.flush();
+            }
+            Err(e) => eprintln!("serialize error: {e}"),
+        }
+    }
 }
 
 fn http_client() -> reqwest::blocking::Client {
@@ -47,14 +67,22 @@ fn cmd_search(args: &[String]) -> i32 {
     let limit = flag_value(args, "--limit")
         .and_then(|s| s.parse::<usize>().ok())
         .unwrap_or(10);
+    let channel_limit = flag_value(args, "--channel-limit")
+        .and_then(|s| s.parse::<usize>().ok())
+        .unwrap_or(5);
     let fallback = !args.iter().any(|a| a == "--no-fallback");
 
+    // yt-dlp only yields videos; wrap them as tagged items for the fallback paths.
+    let ytdlp_items = |query: &str, limit: usize| -> Result<Vec<Item>, String> {
+        ytdlp::search(query, limit).map(|v| v.into_iter().map(Item::Video).collect())
+    };
+
     let client = http_client();
-    let results = match innertube::search(&client, query, limit) {
+    let items = match innertube::search(&client, query, limit, channel_limit) {
         Ok(r) if !r.is_empty() => r,
         Ok(_) if fallback => {
             eprintln!("innertube returned no results; trying yt-dlp");
-            ytdlp::search(query, limit).unwrap_or_else(|e| {
+            ytdlp_items(query, limit).unwrap_or_else(|e| {
                 eprintln!("yt-dlp fallback failed: {e}");
                 Vec::new()
             })
@@ -62,7 +90,7 @@ fn cmd_search(args: &[String]) -> i32 {
         Ok(empty) => empty,
         Err(e) if fallback => {
             eprintln!("innertube failed ({e}); trying yt-dlp");
-            match ytdlp::search(query, limit) {
+            match ytdlp_items(query, limit) {
                 Ok(r) => r,
                 Err(e2) => {
                     eprintln!("yt-dlp fallback failed: {e2}");
@@ -76,18 +104,54 @@ fn cmd_search(args: &[String]) -> i32 {
         }
     };
 
-    let stdout = std::io::stdout();
-    let mut lock = stdout.lock();
-    for r in &results {
-        match serde_json::to_string(r) {
-            Ok(line) => {
-                let _ = writeln!(lock, "{line}");
-                let _ = lock.flush();
-            }
-            Err(e) => eprintln!("serialize error: {e}"),
+    emit_items(&items);
+    0
+}
+
+fn cmd_channel(args: &[String]) -> i32 {
+    let Some(id) = args.iter().find(|a| !a.starts_with("--")) else {
+        eprintln!("channel: missing channel id");
+        return 2;
+    };
+    let limit = flag_value(args, "--limit")
+        .and_then(|s| s.parse::<usize>().ok())
+        .unwrap_or(30);
+
+    match ytdlp::channel(id, limit) {
+        Ok((videos, playlists)) => {
+            let mut items: Vec<Item> = Vec::new();
+            items.extend(videos.into_iter().map(Item::Video));
+            items.extend(playlists.into_iter().map(Item::Playlist));
+            emit_items(&items);
+            0
+        }
+        Err(e) => {
+            eprintln!("channel failed: {e}");
+            1
         }
     }
-    0
+}
+
+fn cmd_playlist(args: &[String]) -> i32 {
+    let Some(id) = args.iter().find(|a| !a.starts_with("--")) else {
+        eprintln!("playlist: missing playlist id");
+        return 2;
+    };
+    let limit = flag_value(args, "--limit")
+        .and_then(|s| s.parse::<usize>().ok())
+        .unwrap_or(50);
+
+    match ytdlp::playlist(id, limit) {
+        Ok(videos) => {
+            let items: Vec<Item> = videos.into_iter().map(Item::Video).collect();
+            emit_items(&items);
+            0
+        }
+        Err(e) => {
+            eprintln!("playlist failed: {e}");
+            1
+        }
+    }
 }
 
 fn cmd_thumbnail(args: &[String]) -> i32 {

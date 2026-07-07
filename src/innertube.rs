@@ -1,4 +1,4 @@
-use crate::model::{parse_duration_secs, SearchResult};
+use crate::model::{parse_duration_secs, ChannelResult, Item, SearchResult};
 use serde_json::{json, Value};
 
 /// Public web client key baked into youtube.com's own frontend. Not secret.
@@ -32,13 +32,17 @@ fn post_search(client: &reqwest::blocking::Client, body: &Value) -> Result<Value
 }
 
 /// Search YouTube via the internal InnerTube API. No API key/quota. A single response
-/// only carries ~20 videos, so we follow continuation tokens until we have `limit`.
+/// only carries ~20 videos, so we follow continuation tokens until we have `video_limit`
+/// videos. Channels appear on the first page; at most `channel_limit` are kept. Videos
+/// and channels are returned interleaved in the order YouTube ranks them.
 pub fn search(
     client: &reqwest::blocking::Client,
     query: &str,
-    limit: usize,
-) -> Result<Vec<SearchResult>, String> {
+    video_limit: usize,
+    channel_limit: usize,
+) -> Result<Vec<Item>, String> {
     let mut out = Vec::new();
+    let (mut videos, mut channels) = (0usize, 0usize);
 
     // Initial page. A hard error here propagates so the caller can fall back to yt-dlp.
     let json = post_search(client, &json!({ "context": context(), "query": query }))?;
@@ -47,15 +51,15 @@ pub fn search(
         .and_then(Value::as_array)
     {
         Some(sections) => {
-            collect_videos(sections, &mut out, limit);
+            collect_items(sections, &mut out, video_limit, channel_limit, &mut videos, &mut channels);
             find_token(sections)
         }
         None => None,
     };
 
-    // Follow continuations. Failures here are non-fatal: return what we have.
+    // Follow continuations for more videos. Failures here are non-fatal: return what we have.
     let mut rounds = 0;
-    while out.len() < limit && rounds < MAX_CONTINUATIONS {
+    while videos < video_limit && rounds < MAX_CONTINUATIONS {
         let Some(t) = token.take() else {
             break;
         };
@@ -69,7 +73,7 @@ pub fn search(
         else {
             break;
         };
-        collect_videos(items, &mut out, limit);
+        collect_items(items, &mut out, video_limit, channel_limit, &mut videos, &mut channels);
         token = find_token(items);
     }
 
@@ -90,10 +94,18 @@ fn text_of(v: &Value) -> String {
     String::new()
 }
 
-/// Walk a list of section-like items (`itemSectionRenderer.contents[].videoRenderer`),
-/// appending parsed videos until `limit` is reached. Shared by the initial and
-/// continuation responses, which use the same shape.
-fn collect_videos(sections: &[Value], out: &mut Vec<SearchResult>, limit: usize) {
+/// Walk section-like items (`itemSectionRenderer.contents[]`), appending parsed
+/// videos and channels until each per-kind cap is reached. Shared by the initial
+/// and continuation responses, which use the same shape. `videos`/`channels` are
+/// running counts carried across calls.
+fn collect_items(
+    sections: &[Value],
+    out: &mut Vec<Item>,
+    video_limit: usize,
+    channel_limit: usize,
+    videos: &mut usize,
+    channels: &mut usize,
+) {
     for section in sections {
         let Some(items) = section
             .pointer("/itemSectionRenderer/contents")
@@ -102,13 +114,22 @@ fn collect_videos(sections: &[Value], out: &mut Vec<SearchResult>, limit: usize)
             continue;
         };
         for item in items {
-            let Some(vr) = item.get("videoRenderer") else {
-                continue;
-            };
-            if let Some(r) = parse_video(vr) {
-                out.push(r);
-                if out.len() >= limit {
-                    return;
+            if *videos >= video_limit && *channels >= channel_limit {
+                return;
+            }
+            if let Some(vr) = item.get("videoRenderer") {
+                if *videos < video_limit {
+                    if let Some(r) = parse_video(vr) {
+                        out.push(Item::Video(r));
+                        *videos += 1;
+                    }
+                }
+            } else if let Some(cr) = item.get("channelRenderer") {
+                if *channels < channel_limit {
+                    if let Some(c) = parse_channel(cr) {
+                        out.push(Item::Channel(c));
+                        *channels += 1;
+                    }
                 }
             }
         }
@@ -150,6 +171,24 @@ fn parse_video(vr: &Value) -> Option<SearchResult> {
         duration_secs,
         views,
         published,
+        description_snippet,
+    })
+}
+
+fn parse_channel(cr: &Value) -> Option<ChannelResult> {
+    let id = cr.get("channelId")?.as_str()?.to_string();
+    let title = text_of(cr.get("title")?);
+    // See ChannelResult: YouTube stores the handle under subscriberCountText and
+    // the subscriber count under videoCountText.
+    let handle = cr.get("subscriberCountText").map(text_of).unwrap_or_default();
+    let subscribers = cr.get("videoCountText").map(text_of).unwrap_or_default();
+    let description_snippet = cr.get("descriptionSnippet").map(text_of).unwrap_or_default();
+
+    Some(ChannelResult {
+        id,
+        title,
+        handle,
+        subscribers,
         description_snippet,
     })
 }

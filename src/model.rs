@@ -1,5 +1,43 @@
 use serde::Serialize;
 
+/// A single item in a stream: a video, a channel, or a playlist. Serialized as
+/// one NDJSON line with a `kind` discriminator (e.g. `{"kind":"video",...}`) so
+/// the Lua side can bucket each line into the right section.
+#[derive(Serialize, Debug, Clone)]
+#[serde(tag = "kind", rename_all = "lowercase")]
+pub enum Item {
+    Video(SearchResult),
+    Channel(ChannelResult),
+    Playlist(PlaylistResult),
+}
+
+/// A channel hit from search. NOTE: YouTube's `channelRenderer` field names are
+/// misleading — the handle lives in `subscriberCountText` and the subscriber
+/// count in `videoCountText` — so those are mapped deliberately, not swapped.
+#[derive(Serialize, Debug, Clone)]
+pub struct ChannelResult {
+    /// Channel id, e.g. "UCwzCMiicL-hBUzyjWiJaseg".
+    pub id: String,
+    /// Channel name, e.g. "Kill Tony".
+    pub title: String,
+    /// Handle, e.g. "@KillTony". Empty if unknown.
+    pub handle: String,
+    /// e.g. "2.71M subscribers". Empty if unknown.
+    pub subscribers: String,
+    /// Truncated channel description. May be empty.
+    pub description_snippet: String,
+}
+
+/// A playlist hit (from a channel's Playlists tab).
+#[derive(Serialize, Debug, Clone)]
+pub struct PlaylistResult {
+    /// Playlist id, e.g. "PL...".
+    pub id: String,
+    pub title: String,
+    /// e.g. "42 videos". Empty if unknown.
+    pub video_count: String,
+}
+
 /// One YouTube search result. Serialized as a single NDJSON line to stdout so the
 /// Lua side can append results to the buffer progressively.
 #[derive(Serialize, Debug, Clone)]

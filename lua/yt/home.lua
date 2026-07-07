@@ -284,26 +284,9 @@ end
 
 function M.action_add_to_playlist()
   local v = current_video()
-  if not v then
-    return
+  if v then
+    require("yt.playlist_add").pick(v, refresh_keep_cursor)
   end
-  local choices = vim.list_extend({ "New playlist..." }, store.playlist_names())
-  vim.ui.select(choices, { prompt = "Add to playlist:" }, function(choice)
-    if not choice then
-      return
-    end
-    if choice == "New playlist..." then
-      vim.ui.input({ prompt = "New playlist name: " }, function(name)
-        if name and name ~= "" then
-          store.playlist_add(name, v)
-          refresh_keep_cursor()
-        end
-      end)
-    else
-      store.playlist_add(choice, v)
-      refresh_keep_cursor()
-    end
-  end)
 end
 
 --- Download the video under the cursor for offline playback.

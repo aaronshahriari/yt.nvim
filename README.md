@@ -150,19 +150,27 @@ In the home pane:
 | `gl`   | Playlists page                              |
 | `q`    | close                                       |
 
+Search results are grouped into a **Channels** section and a **Videos** section
+(the channels come free with the same request). Press `<CR>` on a channel to open
+its **channel page** — that channel's videos and playlists — and `<CR>` on one of
+those playlists to open it as its own video list. `<BS>` pops back up that stack
+(playlist → channel → search). Everything you can do to a video in search (play,
+pin, download, add to playlist) works on those pages too.
+
 In the results pane:
 
-| Key     | Action                          |
-| ------- | ------------------------------- |
-| `j`/`k` | move — preview updates on hover |
-| `H`/`L` | previous / next page            |
-| `<CR>`  | play the highlighted video (mpv)|
-| `s`     | new search                      |
-| `p`     | pin/unpin highlighted result    |
-| `a`     | add result to a local playlist  |
-| `i`     | download result for offline play|
-| `gh`    | back to the home screen         |
-| `q`     | close                           |
+| Key     | Action                                       |
+| ------- | -------------------------------------------- |
+| `j`/`k` | move — preview updates on hover              |
+| `H`/`L` | previous / next page (videos)                |
+| `<CR>`  | play video / open channel / open playlist    |
+| `<BS>`  | back one view (channel/playlist → previous)  |
+| `s`     | new search                                   |
+| `p`     | pin/unpin highlighted video                  |
+| `a`     | add video to a local playlist                |
+| `i`     | download video for offline play              |
+| `gh`    | back to the home screen                      |
+| `q`     | close                                        |
 
 ## Configuration
 
@@ -189,6 +197,22 @@ require("yt").setup({
   icons = {
     installed = "",        -- marker for a downloaded video
     downloading = "",      -- marker shown while a download runs
+    video = "●",            -- bullet for a video row
+    channel = "",          -- channel row
+    playlist = "",         -- playlist row
+  },
+  -- Search results: which sections show (in order) and their caps. Channels come
+  -- from the same request as videos, so showing them costs nothing extra.
+  search = {
+    sections = { "channels", "videos" },
+    channels = { limit = 5 },   -- max channels shown atop the results
+  },
+  -- The channel page (opened with <CR> on a channel).
+  channel = {
+    sections = { "videos", "playlists" },
+    videos = { limit = nil },   -- nil = show everything fetched
+    playlists = { limit = nil },
+    fetch_limit = 30,           -- how many videos/playlists to pull per channel
   },
   -- The compact home dashboard: which sections appear (in this order) and how
   -- many items each shows. Remove a section from `sections` to hide it — its
@@ -209,8 +233,9 @@ require("yt").setup({
     playlists = { limit = nil, items = nil },
   },
   keymaps = {
-    play = "<CR>",          -- play the highlighted result
+    play = "<CR>",          -- play video / open channel or playlist under the cursor
     home = "gh",            -- back to the home screen
+    back = "<BS>",          -- pop back one view (channel/playlist -> previous)
     search = "s",           -- start a new search
     pin = "p",              -- pin/unpin the highlighted result
     add_to_playlist = "a",  -- add the highlighted result to a local playlist
