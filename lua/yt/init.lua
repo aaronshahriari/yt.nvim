@@ -52,6 +52,36 @@ function M.play()
   end
 end
 
+--- Create a new empty playlist from anywhere. Refreshes the home screen if open.
+--- Returns true if created, false if the name is blank or already taken.
+function M.create_playlist(name)
+  local ok = require("yt.store").playlist_create(name)
+  if ok then
+    local home = require("yt.home")
+    if home.is_open() then
+      home.render()
+    end
+    vim.notify("yt.nvim: created playlist " .. name, vim.log.levels.INFO)
+  end
+  return ok
+end
+
+--- Download the result/video under the cursor for offline playback.
+function M.install()
+  local ui = require("yt.ui")
+  if ui.is_open() then
+    local r = ui.current_result()
+    if r then
+      require("yt.install").install(r)
+    end
+    return
+  end
+  local home = require("yt.home")
+  if home.is_open() then
+    home.action_install()
+  end
+end
+
 --- Close the yt.nvim tab.
 function M.close()
   local ui = require("yt.ui")

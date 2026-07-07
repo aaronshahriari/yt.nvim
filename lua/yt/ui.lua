@@ -254,6 +254,12 @@ function M.setup_keymaps()
       add_to_playlist(r)
     end
   end)
+  map(km.install, function()
+    local r = M.current_result()
+    if r then
+      require("yt.install").install(r)
+    end
+  end)
   map(km.quit, function()
     M.close()
   end)

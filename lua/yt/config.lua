@@ -4,7 +4,7 @@ local defaults = {
   bin_path = nil, -- explicit path to the `yt` helper; auto-resolved if nil
   per_page = 10, -- results shown per page
   max_pages = 5, -- max pages fetched per search (total = per_page * max_pages)
-  history_limit = 30, -- recently watched entries kept on disk
+  history_limit = 30, -- recently watched entries kept on disk (feeds home + page)
   results_side = "left", -- which side the results list sits on ("left"|"right")
   preview_width = 0.5, -- preview pane fraction of total columns
   debounce_ms = 100, -- hover debounce before rendering a preview
@@ -15,7 +15,38 @@ local defaults = {
     height = nil,
   },
   player = {
-    cmd = { "mpv", "--save-position-on-quit=yes" }, -- youtube URL is appended
+    cmd = { "mpv", "--save-position-on-quit=yes" }, -- youtube URL (or local file) is appended
+  },
+  download = {
+    -- Where installed videos are stored. nil => stdpath("data")/yt.nvim/downloads.
+    dir = nil,
+    -- yt-dlp format selector. nil lets yt-dlp choose (needs ffmpeg to merge).
+    format = nil,
+    -- Extra args appended to every yt-dlp download.
+    args = {},
+  },
+  icons = {
+    installed = "", -- shown next to a locally downloaded video (nf-fa-download)
+    downloading = "", -- shown while a download is in progress (nf-fa-cloud_download)
+  },
+  -- The home dashboard: which sections show (in this order) and how many items
+  -- each shows in the compact combined view. Drop a section from `sections` to
+  -- hide it; its jump key still opens the full page. Set a `limit` to nil to show
+  -- everything on the dashboard too.
+  home = {
+    sections = { "recent", "pinned", "installed", "playlists" },
+    recent = { limit = 5 },
+    pinned = { limit = 5 },
+    installed = { limit = 5 },
+    playlists = { limit = 5, items = 5 }, -- 5 playlists, 5 videos per expanded one
+  },
+  -- The dedicated single-section pages (opened with gr/gp/gi/gl). A nil `limit`
+  -- shows everything (recent is still bounded by history_limit on disk).
+  pages = {
+    recent = { limit = nil },
+    pinned = { limit = nil },
+    installed = { limit = nil },
+    playlists = { limit = nil, items = nil },
   },
   keymaps = {
     play = "<CR>", -- play highlighted result via the player
@@ -23,6 +54,7 @@ local defaults = {
     search = "s", -- start a new search
     pin = "p", -- pin/unpin highlighted result
     add_to_playlist = "a", -- add highlighted result to a local playlist
+    install = "i", -- download highlighted result for offline playback
     page_next = "L", -- next page of results
     page_prev = "H", -- previous page of results
   },
@@ -32,17 +64,41 @@ local defaults = {
     search = "s", -- start a search
     pin = "p", -- pin/unpin highlighted video
     add_to_playlist = "a", -- add highlighted video to a local playlist
+    new_playlist = "N", -- create a new empty playlist
+    install = "i", -- download highlighted video for offline playback
     remove = "d", -- remove highlighted item from its section
-    jump_recent = "gr", -- jump to recently watched
-    jump_pinned = "gp", -- jump to pinned
-    jump_playlists = "gl", -- jump to playlists
+    home = "gh", -- return to the full home view from a section page
+    jump_recent = "gr", -- open the Recently watched page
+    jump_pinned = "gp", -- open the Pinned page
+    jump_installed = "gi", -- open the Installed page
+    jump_playlists = "gl", -- open the Playlists page
   },
 }
 
 M.options = vim.deepcopy(defaults)
 
+-- Options whose value is a list. tbl_deep_extend merges lists index-wise (so a
+-- shorter user list would leave stale tail entries), so these must replace outright.
+local LIST_OVERRIDES = {
+  { "home", "sections" },
+  { "player", "cmd" },
+  { "download", "args" },
+}
+
 function M.setup(opts)
-  M.options = vim.tbl_deep_extend("force", vim.deepcopy(defaults), opts or {})
+  opts = opts or {}
+  M.options = vim.tbl_deep_extend("force", vim.deepcopy(defaults), opts)
+  for _, path in ipairs(LIST_OVERRIDES) do
+    local src, dst = opts, M.options
+    for i = 1, #path - 1 do
+      src = src and src[path[i]]
+      dst = dst[path[i]]
+    end
+    local leaf = path[#path]
+    if src and src[leaf] ~= nil then
+      dst[leaf] = src[leaf]
+    end
+  end
 end
 
 --- Resolve the helper binary: explicit config > downloaded `bin/yt` > local

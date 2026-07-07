@@ -32,7 +32,7 @@ to a source build only if no release matches your platform.
 - A terminal that speaks the **Kitty graphics protocol**: Kitty, Ghostty, or WezTerm
 - [`imagemagick`](https://imagemagick.org) — required by image.nvim
 - [`mpv`](https://mpv.io) — playback
-- [`yt-dlp`](https://github.com/yt-dlp/yt-dlp) — fallback search + mpv stream resolver
+- [`yt-dlp`](https://github.com/yt-dlp/yt-dlp) — fallback search, mpv stream resolver, and offline downloads
 - [3rd/image.nvim](https://github.com/3rd/image.nvim) (optional — without it you still get
   results, metadata, and playback, just no thumbnails)
 - Only if building from source (no prebuilt binary for your platform): Rust toolchain (`cargo`)
@@ -111,10 +111,25 @@ On Nix, `nix develop` provides `cargo`, `imagemagick`, `mpv`, and `yt-dlp` for l
 - `:Yt` — open the home screen
 - `:Yt <query>` — open and search immediately
 - `:YtBuild` — (re)download or build the helper binary
+- `:YtPlaylistNew [name]` — create a new empty playlist (prompts if no name)
+- `:YtInstall` — download the highlighted video for offline playback
 
 The home screen stores its runtime state under `stdpath("data")/yt.nvim/`:
-recently watched videos, pinned videos, and local playlists. Playback records a
-video into history, and the default mpv command saves/resumes playback position.
+recently watched videos, pinned videos, local playlists, and installed (downloaded)
+videos. Playback records a video into history, and the default mpv command
+saves/resumes playback position.
+
+**Offline downloads.** Press `i` on any video to download it with yt-dlp into
+`stdpath("data")/yt.nvim/downloads/`. Installed videos are marked with a  icon
+everywhere they appear (including inside playlists) and gain their own **Installed**
+section. Playing an installed video uses the local file, so it works offline. mpv is
+launched fully detached, so it keeps running after you close Neovim or the terminal.
+
+The dashboard is a compact summary — each section shows a handful of items (see
+`home` in [Configuration](#configuration)), with a `… and N more` line when
+there's more. The jump keys open each section as its own dedicated page showing
+everything (configured under `pages`); `gh` returns to the full home. Deleting a
+playlist, or removing a video from one, asks for confirmation first.
 
 In the home pane:
 
@@ -125,10 +140,14 @@ In the home pane:
 | `s`    | new search                                  |
 | `p`    | pin/unpin highlighted video                 |
 | `a`    | add highlighted video to a local playlist   |
-| `d`    | remove highlighted item from its section    |
-| `gr`   | jump to Recently watched                    |
-| `gp`   | jump to Pinned                              |
-| `gl`   | jump to Playlists                           |
+| `N`    | create a new empty playlist                 |
+| `i`    | download highlighted video for offline play |
+| `d`    | remove highlighted item (deletes the file in Installed) |
+| `gh`   | back to the full home view                  |
+| `gr`   | Recently watched page                       |
+| `gp`   | Pinned page                                 |
+| `gi`   | Installed page                              |
+| `gl`   | Playlists page                              |
 | `q`    | close                                       |
 
 In the results pane:
@@ -141,6 +160,7 @@ In the results pane:
 | `s`     | new search                      |
 | `p`     | pin/unpin highlighted result    |
 | `a`     | add result to a local playlist  |
+| `i`     | download result for offline play|
 | `q`     | close                           |
 
 ## Configuration
@@ -159,12 +179,40 @@ require("yt").setup({
   use_ytdlp_fallback = true,-- fall back to yt-dlp if InnerTube returns nothing
   bin_path = nil,           -- explicit path to the `yt` helper (auto-resolved otherwise)
   image = { height = nil },  -- optional max thumbnail height in rows (nil = fill the split width)
-  player = { cmd = { "mpv", "--save-position-on-quit=yes" } }, -- video URL appended
+  player = { cmd = { "mpv", "--save-position-on-quit=yes" } }, -- video URL (or local file) appended
+  download = {
+    dir = nil,              -- where installed videos go (nil = stdpath("data")/yt.nvim/downloads)
+    format = nil,           -- yt-dlp format selector (nil = yt-dlp's default; merging needs ffmpeg)
+    args = {},              -- extra args appended to every yt-dlp download
+  },
+  icons = {
+    installed = "",        -- marker for a downloaded video
+    downloading = "",      -- marker shown while a download runs
+  },
+  -- The compact home dashboard: which sections appear (in this order) and how
+  -- many items each shows. Remove a section from `sections` to hide it — its
+  -- jump key (below) still opens the full page. A nil `limit` shows everything.
+  home = {
+    sections = { "recent", "pinned", "installed", "playlists" },
+    recent    = { limit = 5 },
+    pinned    = { limit = 5 },
+    installed = { limit = 5 },
+    playlists = { limit = 5, items = 5 }, -- 5 playlists, 5 videos per expanded one
+  },
+  -- The dedicated single-section pages (gr/gp/gi/gl). nil `limit` = show all
+  -- (recent is still bounded by history_limit on disk).
+  pages = {
+    recent    = { limit = nil },
+    pinned    = { limit = nil },
+    installed = { limit = nil },
+    playlists = { limit = nil, items = nil },
+  },
   keymaps = {
     play = "<CR>",          -- play the highlighted result
     search = "s",           -- start a new search
     pin = "p",              -- pin/unpin the highlighted result
     add_to_playlist = "a",  -- add the highlighted result to a local playlist
+    install = "i",          -- download the highlighted result for offline playback
     quit = "q",             -- close the yt.nvim tab
     page_next = "L",        -- next page
     page_prev = "H",        -- previous page
@@ -174,10 +222,14 @@ require("yt").setup({
     search = "s",           -- start a new search
     pin = "p",              -- pin/unpin highlighted video
     add_to_playlist = "a",  -- add highlighted video to a local playlist
+    new_playlist = "N",     -- create a new empty playlist
+    install = "i",          -- download highlighted video for offline playback
     remove = "d",           -- remove highlighted item from its section
-    jump_recent = "gr",     -- jump to recently watched
-    jump_pinned = "gp",     -- jump to pinned
-    jump_playlists = "gl",  -- jump to playlists
+    home = "gh",            -- return to the full home view
+    jump_recent = "gr",     -- open the Recently watched page
+    jump_pinned = "gp",     -- open the Pinned page
+    jump_installed = "gi",  -- open the Installed page
+    jump_playlists = "gl",  -- open the Playlists page
     quit = "q",             -- close the yt.nvim tab
   },
 })

@@ -127,6 +127,51 @@ function M.pinned_toggle(video)
   end
 end
 
+-- Installed (locally downloaded videos) -------------------------------------
+
+function M.installed_list()
+  return read("installed.json", {})
+end
+
+function M.is_installed(id)
+  return index_of(M.installed_list(), id) ~= nil
+end
+
+--- Absolute path to the downloaded file for `id`, or nil.
+function M.installed_path(id)
+  local list = M.installed_list()
+  local i = index_of(list, id)
+  return i and list[i].path or nil
+end
+
+--- Record a downloaded video (front of the list, deduped by id).
+function M.install_add(video, path)
+  if not (video and video.id) then
+    return
+  end
+  local list = M.installed_list()
+  if not index_of(list, video.id) then
+    local entry = clean(video)
+    entry.path = path
+    table.insert(list, 1, entry)
+    write("installed.json", list)
+  end
+end
+
+--- Drop the installed record; delete the file too when `delete_file`.
+function M.uninstall(id, delete_file)
+  local list = M.installed_list()
+  local i = index_of(list, id)
+  if i then
+    local path = list[i].path
+    table.remove(list, i)
+    write("installed.json", list)
+    if delete_file and path and path ~= "" then
+      vim.fn.delete(path)
+    end
+  end
+end
+
 -- Playlists (named local lists of videos) -----------------------------------
 
 function M.playlists()
@@ -147,6 +192,21 @@ local function playlist_index(list, name)
       return i
     end
   end
+end
+
+--- Create an empty playlist. Returns true if created, false if the name is
+--- blank or already taken.
+function M.playlist_create(name)
+  if not (name and name ~= "") then
+    return false
+  end
+  local lists = M.playlists()
+  if playlist_index(lists, name) then
+    return false
+  end
+  table.insert(lists, { name = name, items = {} })
+  write("playlists.json", lists)
+  return true
 end
 
 --- Add a video to a playlist, creating the playlist if it doesn't exist.
