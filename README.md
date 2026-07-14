@@ -140,6 +140,7 @@ In the home pane:
 | ------ | ------------------------------------------- |
 | `j`/`k` | move — preview updates on hover             |
 | `<CR>` | play video / expand or collapse playlist    |
+| `gw`   | open highlighted video in the web browser   |
 | `s`    | new search                                  |
 | `p`    | pin/unpin highlighted video                 |
 | `a`    | add highlighted video to a local playlist   |
@@ -167,6 +168,7 @@ In the results pane:
 | `j`/`k` | move — preview updates on hover              |
 | `H`/`L` | previous / next page (videos)                |
 | `<CR>`  | play video / open channel / open playlist    |
+| `gw`    | open highlighted video in the web browser    |
 | `<BS>`  | back one view (channel/playlist → previous)  |
 | `s`     | new search                                   |
 | `p`     | pin/unpin highlighted video                  |
@@ -237,6 +239,7 @@ require("yt").setup({
   },
   keymaps = {
     play = "<CR>",          -- play video / open channel or playlist under the cursor
+    open = "gw",            -- open the highlighted video in the web browser
     home = "gh",            -- back to the home screen
     back = "<BS>",          -- pop back one view (channel/playlist -> previous)
     search = "s",           -- start a new search
@@ -249,6 +252,7 @@ require("yt").setup({
   },
   home_keymaps = {
     play = "<CR>",          -- play highlighted video / expand playlist
+    open = "gw",            -- open the highlighted video in the web browser
     search = "s",           -- start a new search
     pin = "p",              -- pin/unpin highlighted video
     add_to_playlist = "a",  -- add highlighted video to a local playlist

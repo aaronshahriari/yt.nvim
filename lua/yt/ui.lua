@@ -472,6 +472,12 @@ function M.setup_keymaps()
     end
   end
   map(km.play, M.activate)
+  map(km.open, function()
+    local r = M.current_result()
+    if r then
+      vim.ui.open(require("yt.player").url(r))
+    end
+  end)
   map(km.back, M.back)
   map(km.home, function()
     require("yt").open() -- closes the browser, opens the home screen

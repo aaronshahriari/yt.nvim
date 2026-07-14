@@ -274,6 +274,14 @@ function M.action_play()
   end
 end
 
+--- Open the video under the cursor in the system web browser.
+function M.action_open()
+  local v = current_video()
+  if v then
+    vim.ui.open(require("yt.player").url(v))
+  end
+end
+
 function M.action_pin()
   local v = current_video()
   if v then
@@ -370,6 +378,7 @@ function M.setup_keymaps()
     end
   end
   map(km.play, M.action_play)
+  map(km.open, M.action_open)
   map(km.search, M.action_search)
   map(km.pin, M.action_pin)
   map(km.add_to_playlist, M.action_add_to_playlist)

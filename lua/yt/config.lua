@@ -66,6 +66,7 @@ local defaults = {
   },
   keymaps = {
     play = "<CR>", -- play video / open channel or playlist under the cursor
+    open = "gw", -- open highlighted video in the web browser
     quit = "q", -- close the yt.nvim tab
     home = "gh", -- go back to the home screen
     back = "<BS>", -- pop back one view (channel/playlist -> where you came from)
@@ -78,6 +79,7 @@ local defaults = {
   },
   home_keymaps = {
     play = "<CR>", -- play highlighted video / expand playlist
+    open = "gw", -- open highlighted video in the web browser
     quit = "q", -- close the yt.nvim tab
     search = "s", -- start a search
     pin = "p", -- pin/unpin highlighted video
