@@ -9,28 +9,55 @@ jobs:
   build:
     name: Build ${{ matrix.target }}
     runs-on: ${{ matrix.os }}
-    permissions:
-      contents: write
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: ubuntu-latest
             target: x86_64-linux
+            triple: x86_64-unknown-linux-gnu
           - os: ubuntu-24.04-arm
             target: aarch64-linux
+            triple: aarch64-unknown-linux-gnu
+          - os: macos-15-intel
+            target: x86_64-macos
+            triple: x86_64-apple-darwin
+          - os: macos-14
+            target: aarch64-macos
+            triple: aarch64-apple-darwin
 
     steps:
       - uses: actions/checkout@v4
 
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.triple }}
 
       - name: Build release binary
-        run: cargo build --release
+        run: cargo build --release --target ${{ matrix.triple }}
 
       - name: Stage release asset
-        run: cp target/release/yt yt-${{ matrix.target }}
+        run: cp target/${{ matrix.triple }}/release/yt yt-${{ matrix.target }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: yt-${{ matrix.target }}
+          path: yt-${{ matrix.target }}
+          if-no-files-found: error
+
+  release:
+    name: Publish release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
 
       - uses: softprops/action-gh-release@v2
         with:
-          files: yt-${{ matrix.target }}
+          files: dist/*
+          fail_on_unmatched_files: true
